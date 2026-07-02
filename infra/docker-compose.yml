@@ -90,10 +90,14 @@ services:
     build:
       context: ..
       dockerfile: infra/docker/core-django.Dockerfile
+    # THE SHARED IMAGE'S ENTRYPOINT RUNS DJANGO MIGRATIONS; ONLY THE core-django
+    # SERVICE MAY DO THAT. RUNNING IT HERE TOO WOULD RACE CONCURRENT `migrate`
+    # PROCESSES AGAINST A FRESH DATABASE (DUPLICATE pg_type KEY ERRORS).
+    entrypoint: []
     command: celery -A config worker --loglevel=info
     env_file: *env_file
     depends_on:
-      postgres:
+      core-django:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -108,10 +112,12 @@ services:
     build:
       context: ..
       dockerfile: infra/docker/core-django.Dockerfile
+    # SAME REASONING AS celery-worker: SKIP THE MIGRATION ENTRYPOINT
+    entrypoint: []
     command: celery -A config beat --loglevel=info
     env_file: *env_file
     depends_on:
-      postgres:
+      core-django:
         condition: service_healthy
       redis:
         condition: service_healthy
