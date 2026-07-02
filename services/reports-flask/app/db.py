@@ -61,5 +61,9 @@ def get_engine() -> Engine:
         database_url = os.environ.get(
             "DATABASE_URL", "postgresql://devtracker:devtracker@localhost:5432/devtracker"
         )
+        # THIS SERVICE SHIPS psycopg (VERSION 3), BUT SQLALCHEMY'S BARE
+        # postgresql:// SCHEME DEFAULTS TO THE psycopg2 DRIVER - SPELL THE
+        # DRIVER OUT SO THE SHARED DATABASE_URL VALUE WORKS UNCHANGED
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
         _engine = create_engine(database_url, pool_pre_ping=True)
     return _engine
