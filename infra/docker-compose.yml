@@ -102,7 +102,11 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "celery", "-A", "config", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      # CMD-SHELL IS REQUIRED: THE EXEC FORM BYPASSES THE SHELL, SO $$HOSTNAME
+      # WOULD BE PASSED LITERALLY AND THE PING WOULD TARGET A NODE THAT DOES
+      # NOT EXIST ($$ ESCAPES COMPOSE INTERPOLATION, THE CONTAINER SHELL THEN
+      # EXPANDS $HOSTNAME TO THE WORKER'S ACTUAL NODE NAME)
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME"]
       interval: 15s
       timeout: 10s
       retries: 5
