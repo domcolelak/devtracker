@@ -1,0 +1,42 @@
+# PYTHON
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+*.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# DJANGO
+services/core-django/staticfiles/
+services/core-django/mediafiles/
+services/core-django/db.sqlite3
+
+# ENVIRONMENT FILES - NEVER COMMIT REAL SECRETS
+.env
+.env.*
+!.env.example
+
+# DOCKER
+infra/docker/*.log
+
+# GENERATED REPORTS
+services/reports-flask/generated/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# LOGS
+*.log

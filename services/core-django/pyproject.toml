@@ -1,0 +1,34 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings_test"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+source = ["apps"]
+omit = ["*/migrations/*", "*/apps.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config", "devtracker_shared"]
+
+[tool.black]
+line-length = 100
+extend-exclude = "migrations"
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = "(migrations|tests)/"
+
+[tool.django-stubs]
+django_settings_module = "config.settings_test"

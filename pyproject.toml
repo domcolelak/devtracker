@@ -1,0 +1,13 @@
+# ROOT-LEVEL TOOL CONFIG: APPLIES TO FILES OUTSIDE THE PER-SERVICE PACKAGES
+# (shared/, tests/integration/). EACH SERVICE ALSO HAS ITS OWN pyproject.toml
+# WITH THE SAME LINE LENGTH AND RULE SELECTION, PLUS SERVICE-SPECIFIC SETTINGS.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["services/*/migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.black]
+line-length = 100

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devtracker-shared"
+version = "0.1.0"
+description = "Shared Pydantic models, enums and constants used across DevTracker services"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.9.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["devtracker_shared*"]

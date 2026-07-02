@@ -1,0 +1,166 @@
+# CI/CD PIPELINE FOR DEVTRACKER
+#
+# ON EVERY PUSH AND PULL REQUEST:
+#   1. LINT AND TYPECHECK EVERY SERVICE (RUFF, BLACK, MYPY)
+#   2. RUN EACH SERVICE'S TEST SUITE WITH A COVERAGE FLOOR OF 80 PERCENT
+#   3. BUILD ALL THREE DOCKER IMAGES
+#   4. BOOT THE FULL docker-compose STACK AND RUN THE CROSS-SERVICE
+#      INTEGRATION TESTS THROUGH NGINX
+# ON PUSH TO main ADDITIONALLY:
+#   5. PUSH THE IMAGES TO GITHUB CONTAINER REGISTRY (GHCR)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [core-django, api-fastapi, reports-flask]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/${{ matrix.service }}/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ../../shared
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Black formatting check
+        run: black --check .
+
+      - name: Mypy typecheck
+        run: |
+          if [ "${{ matrix.service }}" = "core-django" ]; then
+            mypy apps config
+          else
+            mypy app
+          fi
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [core-django, api-fastapi, reports-flask]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    env:
+      # THE SUITES RUN AGAINST IN-MEMORY SQLITE / FAKEREDIS; THESE VALUES ONLY
+      # NEED TO BE PRESENT AND CONSISTENT, NOT POINT AT REAL INFRASTRUCTURE
+      DATABASE_URL: postgresql://devtracker:devtracker@localhost:5432/devtracker
+      DJANGO_SECRET_KEY: ci-only-secret-key
+      JWT_SIGNING_KEY: ci-only-signing-key-32-bytes!!!!
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/${{ matrix.service }}/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e ../../shared
+
+      - name: Run tests with coverage floor
+        run: pytest --cov --cov-report=term --cov-fail-under=80
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [core-django, api-fastapi, reports-flask]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR REQUIRES LOWERCASE IMAGE NAMES, BUT github.repository PRESERVES THE
+      # REPOSITORY'S ORIGINAL CASING - NORMALIZE IT ONCE HERE
+      - name: Compute lowercase image base
+        id: image
+        run: echo "base=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image (and push on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/${{ matrix.service }}.Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ steps.image.outputs.base }}/${{ matrix.service }}:latest
+            ${{ steps.image.outputs.base }}/${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create .env from the example
+        run: cp .env.example .env
+
+      # --env-file IS EXPLICIT BECAUSE COMPOSE V2 OTHERWISE LOOKS FOR .env IN THE
+      # PROJECT DIRECTORY (infra/), NOT IN THE CURRENT WORKING DIRECTORY
+      - name: Boot the full stack and wait for health
+        run: docker compose --env-file .env -f infra/docker-compose.yml up -d --build --wait
+        timeout-minutes: 15
+
+      - name: Seed demo data
+        run: docker compose --env-file .env -f infra/docker-compose.yml exec -T core-django python manage.py seed_demo_data
+
+      - name: Run cross-service integration tests
+        run: |
+          pip install -r tests/integration/requirements.txt
+          pytest tests/integration -v
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose --env-file .env -f infra/docker-compose.yml logs --tail 100
+
+      - name: Tear down
+        if: always()
+        run: docker compose --env-file .env -f infra/docker-compose.yml down -v

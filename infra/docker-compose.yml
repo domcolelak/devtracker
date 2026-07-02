@@ -1,0 +1,139 @@
+name: devtracker
+
+x-env-file: &env_file
+  - ../.env
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: *env_file
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - devtracker_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  core-django:
+    build:
+      context: ..
+      dockerfile: infra/docker/core-django.Dockerfile
+    env_file: *env_file
+    ports:
+      - "${DJANGO_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api-fastapi:
+    build:
+      context: ..
+      dockerfile: infra/docker/api-fastapi.Dockerfile
+    env_file: *env_file
+    ports:
+      - "${FASTAPI_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      core-django:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  reports-flask:
+    build:
+      context: ..
+      dockerfile: infra/docker/reports-flask.Dockerfile
+    env_file: *env_file
+    ports:
+      - "${FLASK_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  celery-worker:
+    build:
+      context: ..
+      dockerfile: infra/docker/core-django.Dockerfile
+    command: celery -A config worker --loglevel=info
+    env_file: *env_file
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  celery-beat:
+    build:
+      context: ..
+      dockerfile: infra/docker/core-django.Dockerfile
+    command: celery -A config beat --loglevel=info
+    env_file: *env_file
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    depends_on:
+      core-django:
+        condition: service_healthy
+      api-fastapi:
+        condition: service_healthy
+      reports-flask:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  devtracker_postgres_data:

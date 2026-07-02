@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+source = ["app"]
+# SQLALCHEMY'S ASYNC ENGINE SWITCHES INTO GREENLETS FOR EVERY DB CALL; WITHOUT
+# GREENLET CONCURRENCY SUPPORT, COVERAGE SILENTLY STOPS TRACING AN ENDPOINT
+# AFTER ITS FIRST await ON THE DATABASE
+concurrency = ["thread", "greenlet"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008: FUNCTION CALL IN DEFAULT ARGUMENT IS THE STANDARD FASTAPI Depends() PATTERN
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "devtracker_shared"]
+
+[tool.black]
+line-length = 100
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = "tests/"
