@@ -174,13 +174,14 @@ JSON event every time any client creates, updates or deletes a task.
 
 ## Screenshots
 
-Screenshots live in `docs/images/`. After running the stack locally you can
-reproduce them at the URLs above.
+Django admin with the seeded teams (custom columns, member counts, and the
+read-only analytics models in the sidebar):
 
-| | |
-|---|---|
-| Django admin | `docs/images/django-admin.png` (placeholder, see quickstart) |
-| Swagger UI | `docs/images/swagger-ui.png` (placeholder, see quickstart) |
+![Django admin, Teams changelist](docs/images/django-admin.png)
+
+Auto-generated Swagger UI with the POST /tasks operation expanded:
+
+![Swagger UI, POST /tasks](docs/images/swagger-ui.png)
 
 ## Testing and code quality
 
